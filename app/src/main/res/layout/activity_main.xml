@@ -14,6 +14,18 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- Live guide showing what the final overlay will look like, drawn over the preview -->
+    <com.geocamera.app.OverlayPreviewView
+        android:id="@+id/overlayPreview"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:clickable="false"
+        android:focusable="false"
+        app:layout_constraintTop_toTopOf="@id/previewView"
+        app:layout_constraintBottom_toBottomOf="@id/previewView"
+        app:layout_constraintStart_toStartOf="@id/previewView"
+        app:layout_constraintEnd_toEndOf="@id/previewView" />
+
     <ImageButton
         android:id="@+id/btnSwitchCamera"
         android:layout_width="48dp"
@@ -33,7 +45,7 @@
         android:padding="8dp"
         android:background="#66000000"
         android:textColor="@color/white"
-        android:textSize="12sp"
+        android:textSize="15sp"
         android:text="No location selected"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -55,6 +67,7 @@
             android:hint="Person name (optional)"
             android:textColor="@color/white"
             android:textColorHint="#AAAAAA"
+            android:textSize="15sp"
             android:inputType="textPersonName" />
 
         <LinearLayout
@@ -69,7 +82,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:layout_marginEnd="6dp"
-                android:textSize="11sp"
+                android:textSize="14sp"
                 android:textColor="@color/white"
                 android:backgroundTint="#333333"
                 android:text="Pick Location" />
@@ -80,7 +93,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:layout_marginEnd="6dp"
-                android:textSize="11sp"
+                android:textSize="14sp"
                 android:textColor="@color/white"
                 android:backgroundTint="#333333"
                 android:text="Favorites" />
@@ -90,7 +103,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:textSize="11sp"
+                android:textSize="14sp"
                 android:textColor="@color/white"
                 android:backgroundTint="#333333"
                 android:text="Date/Time" />
@@ -103,8 +116,59 @@
             android:layout_marginTop="8dp"
             android:backgroundTint="@color/accent"
             android:textColor="@color/black"
+            android:textSize="16sp"
             android:text="CAPTURE" />
 
     </LinearLayout>
+
+    <!-- Full-screen photo preview with Save / Retake, shown after capture -->
+    <FrameLayout
+        android:id="@+id/previewContainer"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@color/black"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <ImageView
+            android:id="@+id/ivPreview"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="Captured photo preview"
+            android:scaleType="fitCenter" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:orientation="horizontal"
+            android:padding="16dp"
+            android:background="#CC000000">
+
+            <Button
+                android:id="@+id/btnRetake"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:textColor="@color/white"
+                android:backgroundTint="#333333"
+                android:textSize="16sp"
+                android:text="Retake" />
+
+            <Button
+                android:id="@+id/btnSavePhoto"
+                android:layout_width="0dp"
+                android:layout_height="56dp"
+                android:layout_weight="1"
+                android:backgroundTint="@color/accent"
+                android:textColor="@color/black"
+                android:textSize="16sp"
+                android:text="Save" />
+        </LinearLayout>
+    </FrameLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

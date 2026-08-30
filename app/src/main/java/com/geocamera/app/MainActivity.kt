@@ -130,7 +130,7 @@ class MainActivity : AppCompatActivity() {
         updateLocationSummary()
 
         cameraExecutor.execute {
-            val geocode = GeoUtils.reverseGeocode(lat, lng)
+            val geocode = GeoUtils.nativeReverseGeocode(this, lat, lng) ?: GeoUtils.reverseGeocode(lat, lng)
             val tile = SatelliteTile.fetchTileBitmap(lat, lng)
             runOnUiThread {
                 if (geocode != null) {

@@ -106,8 +106,8 @@ class MainActivity : AppCompatActivity() {
         providerFuture.addListener({
             cameraProvider = providerFuture.get()
             val preview = Preview.Builder().build().also {
-                it.surfaceProvider = binding.previewView.surfaceProvider
-            }
+    it.setSurfaceProvider(binding.previewView.surfaceProvider)
+}
             imageCapture = ImageCapture.Builder().build()
             val selector = if (usingFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA
             else CameraSelector.DEFAULT_BACK_CAMERA

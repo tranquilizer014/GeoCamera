@@ -1,8 +1,11 @@
 package com.geocamera.app
 
+import android.content.Context
+import android.location.Geocoder
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -27,6 +30,32 @@ object GeoUtils {
         val deltaLat = w * cos(t)
         val deltaLng = w * sin(t) / cos(Math.toRadians(lat))
         return Pair(lat + deltaLat, lng + deltaLng)
+    }
+
+    /**
+     * Reverse geocode using Android's built-in Geocoder — on devices with Google Play
+     * Services this is backed by Google's own geocoding data, entirely free and with
+     * no API key or billing account required. Returns null if unavailable (rare, mostly
+     * custom ROMs without Play Services), in which case callers should fall back to
+     * [reverseGeocode] (Nominatim).
+     */
+    fun nativeReverseGeocode(context: Context, lat: Double, lng: Double): GeocodeResult? {
+        return try {
+            if (!Geocoder.isPresent()) return null
+            val geocoder = Geocoder(context, Locale.getDefault())
+            @Suppress("DEPRECATION")
+            val addresses = geocoder.getFromLocation(lat, lng, 1)
+            val addr = addresses?.firstOrNull() ?: return null
+            val city = addr.locality ?: addr.subAdminArea ?: addr.subLocality ?: ""
+            val state = addr.adminArea ?: ""
+            val country = addr.countryName ?: ""
+            val fullAddress = if (addr.maxAddressLineIndex >= 0) {
+                (0..addr.maxAddressLineIndex).joinToString(", ") { addr.getAddressLine(it) ?: "" }
+            } else ""
+            GeocodeResult(fullAddress, city, state, country)
+        } catch (e: Exception) {
+            null
+        }
     }
 
     /** Blocking network call — must be invoked off the main thread. */

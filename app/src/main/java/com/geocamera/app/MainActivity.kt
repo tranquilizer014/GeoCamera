@@ -10,6 +10,9 @@ import android.graphics.Matrix
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.text.Editable
+import android.text.TextWatcher
+import android.view.View
 import android.widget.DatePicker
 import android.widget.TimePicker
 import android.widget.Toast
@@ -47,6 +50,9 @@ class MainActivity : AppCompatActivity() {
     private var address: String = ""
     private var plusCode: String = ""
     private var satelliteBitmap: Bitmap? = null
+
+    // Bitmap awaiting the user's Save/Retake decision after a capture.
+    private var pendingBitmap: Bitmap? = null
 
     // Default timezone is IST, user-changeable via the Date/Time dialog.
     private var timeZoneId: String = "Asia/Kolkata"
@@ -98,7 +104,20 @@ class MainActivity : AppCompatActivity() {
         binding.btnDateTime.setOnClickListener { showDateDialog() }
         binding.btnCapture.setOnClickListener { capturePhoto() }
 
+        binding.btnSavePhoto.setOnClickListener {
+            pendingBitmap?.let { bmp -> saveToGallery(bmp) }
+            hidePreview()
+        }
+        binding.btnRetake.setOnClickListener { hidePreview() }
+
+        binding.etPersonName.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) { updateOverlayPreview() }
+        })
+
         updateLocationSummary()
+        updateOverlayPreview()
     }
 
     private fun startCamera() {
@@ -128,6 +147,7 @@ class MainActivity : AppCompatActivity() {
         address = ""
         satelliteBitmap = null
         updateLocationSummary()
+        updateOverlayPreview()
 
         cameraExecutor.execute {
             val geocode = GeoUtils.nativeReverseGeocode(this, lat, lng) ?: GeoUtils.reverseGeocode(lat, lng)
@@ -140,6 +160,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 satelliteBitmap = tile
                 updateLocationSummary()
+                updateOverlayPreview()
             }
         }
     }
@@ -152,6 +173,19 @@ class MainActivity : AppCompatActivity() {
         } else {
             "No location selected — tap Pick Location"
         }
+    }
+
+    /** Pushes the current state into the live on-screen overlay guide. */
+    private fun updateOverlayPreview() {
+        binding.overlayPreview.update(
+            satelliteBitmap,
+            locationName,
+            selectedLat,
+            selectedLng,
+            plusCode,
+            formattedDateTime(),
+            binding.etPersonName.text.toString()
+        )
     }
 
     private fun showFavoritesDialog() {
@@ -207,6 +241,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 calendar.timeZone = TimeZone.getTimeZone(timeZoneId)
                 updateLocationSummary()
+                updateOverlayPreview()
             }
             .show()
     }
@@ -237,14 +272,13 @@ class MainActivity : AppCompatActivity() {
                     photo = bitmap,
                     satelliteTile = satelliteBitmap,
                     locationName = locationName.ifBlank { "Location" },
-                    address = address,
                     lat = selectedLat!!,
                     lng = selectedLng!!,
                     plusCode = plusCode,
                     dateTimeText = formattedDateTime(),
                     personName = binding.etPersonName.text.toString()
                 )
-                saveToGallery(finalBitmap)
+                runOnUiThread { showPreview(finalBitmap) }
             }
 
             override fun onError(exception: ImageCaptureException) {
@@ -253,6 +287,18 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         })
+    }
+
+    private fun showPreview(bitmap: Bitmap) {
+        pendingBitmap = bitmap
+        binding.ivPreview.setImageBitmap(bitmap)
+        binding.previewContainer.visibility = View.VISIBLE
+    }
+
+    private fun hidePreview() {
+        binding.previewContainer.visibility = View.GONE
+        binding.ivPreview.setImageBitmap(null)
+        pendingBitmap = null
     }
 
     private fun imageProxyToBitmap(image: ImageProxy): Bitmap {
@@ -284,9 +330,9 @@ class MainActivity : AppCompatActivity() {
             contentResolver.openOutputStream(uri)?.use { out ->
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 92, out)
             }
-            runOnUiThread { Toast.makeText(this, "Saved to Gallery", Toast.LENGTH_SHORT).show() }
+            Toast.makeText(this, "Saved to Gallery", Toast.LENGTH_SHORT).show()
         } else {
-            runOnUiThread { Toast.makeText(this, "Failed to save photo", Toast.LENGTH_SHORT).show() }
+            Toast.makeText(this, "Failed to save photo", Toast.LENGTH_SHORT).show()
         }
     }
 

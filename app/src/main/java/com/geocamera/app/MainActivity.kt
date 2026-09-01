@@ -7,12 +7,16 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.media.ExifInterface
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.text.Editable
 import android.text.TextWatcher
-import android.view.View
 import android.widget.DatePicker
 import android.widget.TimePicker
 import android.widget.Toast
@@ -51,17 +55,19 @@ class MainActivity : AppCompatActivity() {
     private var plusCode: String = ""
     private var satelliteBitmap: Bitmap? = null
 
-    // Bitmap awaiting the user's Save/Retake decision after a capture.
-    private var pendingBitmap: Bitmap? = null
-
     // Default timezone is IST, user-changeable via the Date/Time dialog.
     private var timeZoneId: String = "Asia/Kolkata"
     private var calendar: Calendar = Calendar.getInstance(TimeZone.getTimeZone(timeZoneId))
 
-    private val requestPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (granted) startCamera() else {
+    private val requestPermissionsLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+            if (results[Manifest.permission.CAMERA] == true) {
+                startCamera()
+            } else {
                 Toast.makeText(this, "Camera permission is required", Toast.LENGTH_LONG).show()
+            }
+            if (results[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
+                fetchCurrentLocation()
             }
         }
 
@@ -75,6 +81,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+    private val pickImageLauncher =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            if (uri != null) applyOverlayToPickedImage(uri)
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -83,18 +94,23 @@ class MainActivity : AppCompatActivity() {
         cameraExecutor = Executors.newSingleThreadExecutor()
         favoritesManager = FavoritesManager(this)
 
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
-            == PackageManager.PERMISSION_GRANTED
-        ) {
-            startCamera()
-        } else {
-            requestPermissionLauncher.launch(Manifest.permission.CAMERA)
-        }
+        val needCamera = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED
+        val needLocation = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
+
+        if (!needCamera) startCamera()
+        if (!needLocation) fetchCurrentLocation()
+
+        val toRequest = mutableListOf<String>()
+        if (needCamera) toRequest.add(Manifest.permission.CAMERA)
+        if (needLocation) toRequest.add(Manifest.permission.ACCESS_FINE_LOCATION)
+        if (toRequest.isNotEmpty()) requestPermissionsLauncher.launch(toRequest.toTypedArray())
 
         binding.btnSwitchCamera.setOnClickListener {
             usingFrontCamera = !usingFrontCamera
             startCamera()
         }
+
+        binding.btnMyLocation.setOnClickListener { fetchCurrentLocation(forceApply = true) }
 
         binding.btnPickLocation.setOnClickListener {
             mapPickerLauncher.launch(Intent(this, MapPickerActivity::class.java))
@@ -102,13 +118,8 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnFavorites.setOnClickListener { showFavoritesDialog() }
         binding.btnDateTime.setOnClickListener { showDateDialog() }
+        binding.btnFromGallery.setOnClickListener { pickImageLauncher.launch("image/*") }
         binding.btnCapture.setOnClickListener { capturePhoto() }
-
-        binding.btnSavePhoto.setOnClickListener {
-            pendingBitmap?.let { bmp -> saveToGallery(bmp) }
-            hidePreview()
-        }
-        binding.btnRetake.setOnClickListener { hidePreview() }
 
         binding.etPersonName.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -137,6 +148,52 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Camera error: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    /**
+     * Uses the device's real GPS/network location as the default. If [forceApply] is false
+     * (used at app launch) it only fills the location in when nothing has been chosen yet, so
+     * it never overwrites a manual pick from the map or a favorite. If [forceApply] is true
+     * (the "My Location" button) it always applies the fresh real location.
+     */
+    private fun fetchCurrentLocation(forceApply: Boolean = false) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            if (forceApply) Toast.makeText(this, "Location permission not granted", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val lm = getSystemService(LOCATION_SERVICE) as LocationManager
+        try {
+            var best: Location? = null
+            for (provider in lm.getProviders(true)) {
+                val loc = lm.getLastKnownLocation(provider) ?: continue
+                if (best == null || loc.accuracy < best!!.accuracy) best = loc
+            }
+            if (best != null && (forceApply || selectedLat == null)) {
+                applyLocation(best.latitude, best.longitude)
+            }
+
+            val provider = when {
+                lm.isProviderEnabled(LocationManager.GPS_PROVIDER) -> LocationManager.GPS_PROVIDER
+                lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER) -> LocationManager.NETWORK_PROVIDER
+                else -> null
+            }
+            if (provider != null) {
+                lm.requestLocationUpdates(provider, 0L, 0f, object : LocationListener {
+                    override fun onLocationChanged(location: Location) {
+                        if (forceApply || selectedLat == null) applyLocation(location.latitude, location.longitude)
+                        lm.removeUpdates(this)
+                    }
+                    override fun onProviderEnabled(provider: String) {}
+                    override fun onProviderDisabled(provider: String) {}
+                }, mainLooper)
+            } else if (best == null && forceApply) {
+                Toast.makeText(this, "No location provider available on this device", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: SecurityException) {
+            if (forceApply) Toast.makeText(this, "Location permission not granted", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun applyLocation(lat: Double, lng: Double) {
@@ -171,7 +228,7 @@ class MainActivity : AppCompatActivity() {
                 "Lat ${"%.5f".format(selectedLat)}  Long ${"%.5f".format(selectedLng)}\n" +
                 formattedDateTime()
         } else {
-            "No location selected — tap Pick Location"
+            "No location selected — tap My Location or Pick Location"
         }
     }
 
@@ -278,7 +335,7 @@ class MainActivity : AppCompatActivity() {
                     dateTimeText = formattedDateTime(),
                     personName = binding.etPersonName.text.toString()
                 )
-                runOnUiThread { showPreview(finalBitmap) }
+                runOnUiThread { saveToGallery(finalBitmap) }
             }
 
             override fun onError(exception: ImageCaptureException) {
@@ -289,16 +346,55 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    private fun showPreview(bitmap: Bitmap) {
-        pendingBitmap = bitmap
-        binding.ivPreview.setImageBitmap(bitmap)
-        binding.previewContainer.visibility = View.VISIBLE
+    /** Applies the current overlay info onto a photo picked from the gallery and saves it. */
+    private fun applyOverlayToPickedImage(uri: Uri) {
+        if (selectedLat == null) {
+            Toast.makeText(this, "Pick a location first", Toast.LENGTH_SHORT).show()
+            return
+        }
+        Toast.makeText(this, "Processing photo…", Toast.LENGTH_SHORT).show()
+        cameraExecutor.execute {
+            val bitmap = loadBitmapFromUri(uri)
+            if (bitmap == null) {
+                runOnUiThread { Toast.makeText(this, "Couldn't load that image", Toast.LENGTH_SHORT).show() }
+                return@execute
+            }
+            val finalBitmap = OverlayRenderer.applyOverlay(
+                photo = bitmap,
+                satelliteTile = satelliteBitmap,
+                locationName = locationName.ifBlank { "Location" },
+                lat = selectedLat!!,
+                lng = selectedLng!!,
+                plusCode = plusCode,
+                dateTimeText = formattedDateTime(),
+                personName = binding.etPersonName.text.toString()
+            )
+            runOnUiThread { saveToGallery(finalBitmap) }
+        }
     }
 
-    private fun hidePreview() {
-        binding.previewContainer.visibility = View.GONE
-        binding.ivPreview.setImageBitmap(null)
-        pendingBitmap = null
+    private fun loadBitmapFromUri(uri: Uri): Bitmap? {
+        return try {
+            val bitmap = contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) } ?: return null
+            val rotation = contentResolver.openInputStream(uri)?.use { input ->
+                val exif = ExifInterface(input)
+                when (exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+                    ExifInterface.ORIENTATION_ROTATE_90 -> 90
+                    ExifInterface.ORIENTATION_ROTATE_180 -> 180
+                    ExifInterface.ORIENTATION_ROTATE_270 -> 270
+                    else -> 0
+                }
+            } ?: 0
+            if (rotation != 0) {
+                val matrix = Matrix()
+                matrix.postRotate(rotation.toFloat())
+                Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+            } else {
+                bitmap
+            }
+        } catch (e: Exception) {
+            null
+        }
     }
 
     private fun imageProxyToBitmap(image: ImageProxy): Bitmap {

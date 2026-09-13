@@ -17,6 +17,7 @@ import android.os.Bundle
 import android.provider.MediaStore
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.View
 import android.widget.DatePicker
 import android.widget.TimePicker
 import android.widget.Toast
@@ -54,6 +55,9 @@ class MainActivity : AppCompatActivity() {
     private var address: String = ""
     private var plusCode: String = ""
     private var satelliteBitmap: Bitmap? = null
+
+    // Bitmap awaiting Save/Cancel in the gallery-photo overlay flow.
+    private var pendingBitmap: Bitmap? = null
 
     // Default timezone is IST, user-changeable via the Date/Time dialog.
     private var timeZoneId: String = "Asia/Kolkata"
@@ -120,6 +124,12 @@ class MainActivity : AppCompatActivity() {
         binding.btnDateTime.setOnClickListener { showDateDialog() }
         binding.btnFromGallery.setOnClickListener { pickImageLauncher.launch("image/*") }
         binding.btnCapture.setOnClickListener { capturePhoto() }
+
+        binding.btnSavePhoto.setOnClickListener {
+            pendingBitmap?.let { bmp -> saveToGallery(bmp) }
+            hidePreview()
+        }
+        binding.btnCancelPreview.setOnClickListener { hidePreview() }
 
         binding.etPersonName.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -304,7 +314,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun formattedDateTime(): String {
-        val sdf = SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.getDefault())
+        val sdf = SimpleDateFormat("dd-MM-yyyy  hh:mm a", Locale.getDefault())
         val zone = TimeZone.getTimeZone(timeZoneId)
         sdf.timeZone = zone
         val offsetHours = zone.rawOffset / 3600000.0
@@ -312,7 +322,7 @@ class MainActivity : AppCompatActivity() {
         val absOffset = abs(offsetHours)
         val h = absOffset.toInt()
         val m = ((absOffset - h) * 60).toInt()
-        return "${sdf.format(calendar.time)} GMT $sign${"%02d".format(h)}:${"%02d".format(m)}"
+        return "${sdf.format(calendar.time)}  GMT $sign${"%02d".format(h)}:${"%02d".format(m)}"
     }
 
     private fun capturePhoto() {
@@ -346,7 +356,10 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    /** Applies the current overlay info onto a photo picked from the gallery and saves it. */
+    /**
+     * Applies the current overlay info onto a photo picked from the gallery, then shows a
+     * preview with Save/Cancel — nothing is written to storage until Save is tapped.
+     */
     private fun applyOverlayToPickedImage(uri: Uri) {
         if (selectedLat == null) {
             Toast.makeText(this, "Pick a location first", Toast.LENGTH_SHORT).show()
@@ -369,8 +382,20 @@ class MainActivity : AppCompatActivity() {
                 dateTimeText = formattedDateTime(),
                 personName = binding.etPersonName.text.toString()
             )
-            runOnUiThread { saveToGallery(finalBitmap) }
+            runOnUiThread { showPreview(finalBitmap) }
         }
+    }
+
+    private fun showPreview(bitmap: Bitmap) {
+        pendingBitmap = bitmap
+        binding.ivPreview.setImageBitmap(bitmap)
+        binding.previewContainer.visibility = View.VISIBLE
+    }
+
+    private fun hidePreview() {
+        binding.previewContainer.visibility = View.GONE
+        binding.ivPreview.setImageBitmap(null)
+        pendingBitmap = null
     }
 
     private fun loadBitmapFromUri(uri: Uri): Bitmap? {

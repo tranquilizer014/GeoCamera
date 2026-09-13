@@ -26,6 +26,9 @@ class OverlayPreviewView @JvmOverloads constructor(
     init {
         isClickable = false
         isFocusable = false
+        // OverlayRenderer uses Canvas.clipPath for the rounded-corner thumbnail; that needs
+        // a software layer to render reliably on some GPUs when drawn via a live View.
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
     }
 
     fun update(

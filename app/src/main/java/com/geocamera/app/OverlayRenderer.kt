@@ -4,12 +4,13 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
 
 object OverlayRenderer {
 
-    /** Fraction of the photo/preview height used by the overlay panel — half of the old 0.26. */
+    /** Fraction of the photo/preview height used by the overlay card. */
     const val PANEL_HEIGHT_FRACTION = 0.13f
 
     /** Bakes the overlay permanently onto a copy of [photo] for the final saved image. */
@@ -31,9 +32,9 @@ object OverlayRenderer {
     }
 
     /**
-     * Draws the info-card overlay onto [canvas], sized for a [width]x[height] surface.
-     * Shared by the live on-screen framing guide and the final captured photo so what
-     * you see while shooting matches what gets saved.
+     * Draws the rounded-corner info-card overlay onto [canvas], sized for a [width]x[height]
+     * surface. Shared by the live on-screen framing guide and the final captured/edited photo
+     * so what you see while shooting matches what gets saved.
      */
     fun drawOverlay(
         canvas: Canvas,
@@ -48,16 +49,33 @@ object OverlayRenderer {
         personName: String
     ) {
         val panelHeight = height * PANEL_HEIGHT_FRACTION
-        val panelTop = height - panelHeight
+        val marginH = width * 0.03f
+        val marginBottom = height * 0.02f
 
-        val bgPaint = Paint().apply { color = Color.parseColor("#DD000000") }
-        canvas.drawRect(0f, panelTop, width.toFloat(), height.toFloat(), bgPaint)
+        val cardLeft = marginH
+        val cardRight = width - marginH
+        val cardBottom = height - marginBottom
+        val cardTop = cardBottom - panelHeight
+        val cornerRadius = panelHeight * 0.18f
+
+        val cardRect = RectF(cardLeft, cardTop, cardRight, cardBottom)
+        val bgPaint = Paint().apply { color = Color.parseColor("#DD000000"); isAntiAlias = true }
+        canvas.drawRoundRect(cardRect, cornerRadius, cornerRadius, bgPaint)
 
         val pad = panelHeight * 0.10f
         val thumbSize = panelHeight - pad * 2
-        val thumbLeft = pad
-        val thumbTop = panelTop + pad
+        val thumbLeft = cardLeft + pad
+        val thumbTop = cardTop + pad
 
+        // Rounded-corner map thumbnail
+        canvas.save()
+        val thumbPath = Path().apply {
+            addRoundRect(
+                RectF(thumbLeft, thumbTop, thumbLeft + thumbSize, thumbTop + thumbSize),
+                thumbSize * 0.16f, thumbSize * 0.16f, Path.Direction.CW
+            )
+        }
+        canvas.clipPath(thumbPath)
         if (satelliteTile != null) {
             val src = Rect(0, 0, satelliteTile.width, satelliteTile.height)
             val dst = RectF(thumbLeft, thumbTop, thumbLeft + thumbSize, thumbTop + thumbSize)
@@ -66,17 +84,27 @@ object OverlayRenderer {
             val placeholderPaint = Paint().apply { color = Color.parseColor("#333333") }
             canvas.drawRect(thumbLeft, thumbTop, thumbLeft + thumbSize, thumbTop + thumbSize, placeholderPaint)
         }
+        canvas.restore()
 
-        val pinPaint = Paint().apply { color = Color.RED; isAntiAlias = true }
-        val cx = thumbLeft + thumbSize / 2
-        val cy = thumbTop + thumbSize / 2
-        canvas.drawCircle(cx, cy - thumbSize * 0.08f, thumbSize * 0.09f, pinPaint)
-        val strokePaint = Paint().apply { color = Color.RED; strokeWidth = thumbSize * 0.035f }
-        canvas.drawLine(cx, cy, cx, cy + thumbSize * 0.12f, strokePaint)
+        // Map-pin marker: black teardrop with an orange/yellow center dot
+        val pinR = thumbSize * 0.10f
+        val pinCx = thumbLeft + thumbSize / 2
+        val pinCy = thumbTop + thumbSize / 2 - pinR * 0.4f
+        val pinPaint = Paint().apply { color = Color.BLACK; isAntiAlias = true }
+        val pinPath = Path().apply {
+            addCircle(pinCx, pinCy, pinR, Path.Direction.CW)
+            moveTo(pinCx - pinR * 0.65f, pinCy + pinR * 0.65f)
+            lineTo(pinCx + pinR * 0.65f, pinCy + pinR * 0.65f)
+            lineTo(pinCx, pinCy + pinR * 2.3f)
+            close()
+        }
+        canvas.drawPath(pinPath, pinPaint)
+        val dotPaint = Paint().apply { color = Color.parseColor("#FFC107"); isAntiAlias = true }
+        canvas.drawCircle(pinCx, pinCy, pinR * 0.42f, dotPaint)
 
         val textLeft = thumbLeft + thumbSize + pad
-        val maxTextWidth = width - textLeft - pad
-        var textY = panelTop + panelHeight * 0.30f
+        val maxTextWidth = cardRight - pad - textLeft
+        var textY = cardTop + panelHeight * 0.30f
 
         val titleSize = panelHeight * 0.26f
         val bodySize = panelHeight * 0.19f
@@ -93,21 +121,21 @@ object OverlayRenderer {
         textY += lineGap
 
         val coordLine = if (lat != null && lng != null) {
-            "Lat ${"%.5f".format(lat)}\u00B0 Long ${"%.5f".format(lng)}\u00B0"
-        } else "Lat --  Long --"
+            "Lat : ${"%.5f".format(lat)}\u00B0   Long : ${"%.5f".format(lng)}\u00B0"
+        } else "Lat : --   Long : --"
         canvas.drawText(truncate(coordLine, bodyPaint, maxTextWidth), textLeft, textY, bodyPaint)
         textY += lineGap
 
         if (plusCode.isNotBlank()) {
-            canvas.drawText(truncate("Plus Code: $plusCode", bodyPaint, maxTextWidth), textLeft, textY, bodyPaint)
+            canvas.drawText(truncate("Plus Code : $plusCode", bodyPaint, maxTextWidth), textLeft, textY, bodyPaint)
             textY += lineGap
         }
 
         canvas.drawText(truncate(dateTimeText, bodyPaint, maxTextWidth), textLeft, textY, bodyPaint)
 
-        if (personName.isNotBlank() && textY + lineGap <= height - pad) {
+        if (personName.isNotBlank() && textY + lineGap <= cardBottom - pad) {
             textY += lineGap
-            canvas.drawText(truncate("Person: $personName", bodyPaint, maxTextWidth), textLeft, textY, bodyPaint)
+            canvas.drawText(truncate("Person : $personName", bodyPaint, maxTextWidth), textLeft, textY, bodyPaint)
         }
     }
 

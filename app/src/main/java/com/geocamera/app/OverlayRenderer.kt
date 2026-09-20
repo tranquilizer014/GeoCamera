@@ -86,11 +86,11 @@ object OverlayRenderer {
         }
         canvas.restore()
 
-        // Map-pin marker: black teardrop with an orange/yellow center dot
+        // Map-pin marker: red teardrop with a white center dot
         val pinR = thumbSize * 0.10f
         val pinCx = thumbLeft + thumbSize / 2
         val pinCy = thumbTop + thumbSize / 2 - pinR * 0.4f
-        val pinPaint = Paint().apply { color = Color.BLACK; isAntiAlias = true }
+        val pinPaint = Paint().apply { color = Color.parseColor("#EA4335"); isAntiAlias = true }
         val pinPath = Path().apply {
             addCircle(pinCx, pinCy, pinR, Path.Direction.CW)
             moveTo(pinCx - pinR * 0.65f, pinCy + pinR * 0.65f)
@@ -99,7 +99,7 @@ object OverlayRenderer {
             close()
         }
         canvas.drawPath(pinPath, pinPaint)
-        val dotPaint = Paint().apply { color = Color.parseColor("#FFC107"); isAntiAlias = true }
+        val dotPaint = Paint().apply { color = Color.WHITE; isAntiAlias = true }
         canvas.drawCircle(pinCx, pinCy, pinR * 0.42f, dotPaint)
 
         val textLeft = thumbLeft + thumbSize + pad
